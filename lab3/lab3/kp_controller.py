@@ -20,6 +20,7 @@ class KpController(Node):
     def start_controller(self, req, resp):
         print(req.start.x)
         print(req.end.x)
+        directions = astar(maze, (req.start.x, req.start.y), (req.end.x, req.end.y))
         resp.status = True
         return resp
     
