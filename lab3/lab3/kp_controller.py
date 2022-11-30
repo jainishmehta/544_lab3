@@ -56,6 +56,7 @@ class KpController(Node):
 
         # Kp controller constant
         self.kp = 3
+        self.maze = None
 
     def start_controller(self, req, resp):
         print(req.start.x)
@@ -133,26 +134,29 @@ class KpController(Node):
                 break
 
     def create_costmap(self, msg: OccupancyGrid):
-        if (not self.created_map):
+        if (not self.maze):
+            # Save data from costmap topic
             width = msg.info.width
             height = msg.info.height
             resolution = msg.info.resolution
             origin = msg.info.origin
-
             data = np.array(msg.data)
+
+            # Reshape array according to width and height
             reshaped_data = np.reshape(data, (height, width)).astype('float32')
 
+            # Determine new image dimentions for downscaling
             resize_factor = 0.2 / resolution
             new_width = int(width / resize_factor)
             new_height = int(height / resize_factor)
 
+            # Rescale and flip the data
             rescaled_data = cv2.resize(reshaped_data, (new_width, new_height))
             flipped_data = cv2.flip(rescaled_data, 0)
+            
+            self.maze = flipped_data
 
-            cv2.imwrite("testimg.png", flipped_data)
-
-            self.created_map = True
-        
+            cv2.imwrite("testimg.png", flipped_data)        
 
 
 def main():
