@@ -1,11 +1,14 @@
 from interfaces.srv import StartAndEnd
 from geometry_msgs.msg import Twist
 from tf2_msgs.msg import TFMessage
+from nav_msgs.msg import OccupancyGrid
 import rclpy
 import numpy as np
 
 from rclpy.node import Node
 import math
+import numpy as np
+import cv2
 
 
 
@@ -27,6 +30,8 @@ class KpController(Node):
         self.subscriber = self.create_subscription(TFMessage, '/tf', self.update_pose, 10)
         self.timer = self.create_timer(0.05, self.kp_controller)
         self.srv = self.create_service(StartAndEnd, 'start_and_end', self.start_controller)
+        self.map_subscriber = self.create_subscription(OccupancyGrid, '/global_costmap/costmap', self.create_costmap, 10)
+        self.created_map = False
         self.tf_to_odom_x = None
         self.tf_to_odom_y = None
         self.curr_pose = Pose()
@@ -126,6 +131,28 @@ class KpController(Node):
                 # Output current pose
                 self.get_logger().info("Current Position: " + str(self.curr_pose))
                 break
+
+    def create_costmap(self, msg: OccupancyGrid):
+        if (not self.created_map):
+            width = msg.info.width
+            height = msg.info.height
+            resolution = msg.info.resolution
+            origin = msg.info.origin
+
+            data = np.array(msg.data)
+            reshaped_data = np.reshape(data, (height, width)).astype('float32')
+
+            resize_factor = 0.2 / resolution
+            new_width = int(width / resize_factor)
+            new_height = int(height / resize_factor)
+
+            rescaled_data = cv2.resize(reshaped_data, (new_width, new_height))
+            flipped_data = cv2.flip(rescaled_data, 0)
+
+            cv2.imwrite("testimg.png", flipped_data)
+
+            self.created_map = True
+        
 
 
 def main():
