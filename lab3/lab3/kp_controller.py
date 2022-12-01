@@ -15,7 +15,8 @@ class Pose():
         self.y = y
         self.theta = theta
         # save unit vector as heading
-        self.heading = []
+        self.heading = [math.cos(theta), math.sin(theta)]
+
     def __str__(self) -> str:
         return f"x: {self.x} y: {self.y} theta: {self.theta*180/math.pi}"
 
@@ -24,7 +25,7 @@ class KpController(Node):
         super().__init__('kp_controller')
         self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
         self.subscriber = self.create_subscription(TFMessage, '/tf', self.update_pose, 10)
-        self.timer = self.create_timer(0.1, self.kp_controller)
+        self.timer = self.create_timer(0.05, self.kp_controller)
         self.srv = self.create_service(StartAndEnd, 'start_and_end', self.start_controller)
         self.tf_to_odom_x = None
         self.tf_to_odom_y = None
@@ -48,6 +49,9 @@ class KpController(Node):
         # Constant linear vel
         self.lin_vel = 0.1
 
+        # Kp controller constant
+        self.kp = 3
+
     def start_controller(self, req, resp):
         print(req.start.x)
         print(req.end.x)
@@ -55,6 +59,7 @@ class KpController(Node):
         return resp
 
     def kp_controller(self):
+        ang_vel = 0
         if len(self.path_nodes)>0:
             # Get last node
             target_node = self.path_nodes[-1]
@@ -63,16 +68,24 @@ class KpController(Node):
             
             # Check if tolerance is met
             if (self.euclidean_distance(target_odom_x, target_odom_y, self.curr_x, self.curr_y) < self.error_threshold):
+                # Remove the node, and continue for the next node on next iteration
                 self.path_nodes.pop()
-                # Assumption: if next node exists, then the robot is not there yet, therefore non zero Twist applied to reach new node
-                if len(self.path_nodes)>0:
-                    pass
             else:
                 # does not meet tolerance, calculate error in heading
                 desired_heading = self.get_desired_heading(target_odom_x, target_odom_y)
-                error1 = self.curr_pose.theta - desired_heading
-                error2 = desired_heading - self.curr_pose.theta
-        pass
+                theta_error = math.acos(np.dot(desired_heading, self.curr_pose.heading))
+                # determine direction of error
+                direction = 1 if np.cross(self.curr_pose.heading, desired_heading)>0 else -1
+                if abs(theta_error) > 0.01:
+                    ang_vel = theta_error*direction*self.kp
+                msg = Twist()
+                msg.linear.x = self.lin_vel
+                msg.angular.z = ang_vel
+                self.publisher.publish(msg)
+        else:
+            # no nodes, stop sending signal
+            msg = Twist()
+            self.publisher.publish(msg)
     
     def euclidean_distance(self, x1, y1, x2, y2):
         return math.sqrt(pow(x1-x2,2)+pow(y1-y2,2))
@@ -86,7 +99,7 @@ class KpController(Node):
         delta_x = target_x-self.curr_pose.x
         delta_y = target_y-self.curr_pose.y
         desired_heading = math.atan2(delta_y, delta_x)
-        return desired_heading
+        return [math.cos(desired_heading), math.sin(desired_heading)]
 
     def update_pose(self, msg: TFMessage):
         for tf in msg.transforms:
