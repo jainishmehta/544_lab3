@@ -57,6 +57,7 @@ class KpController(Node):
         # Kp controller constant
         self.kp = 3
         self.maze = None
+        self.created_map = False
 
     def start_controller(self, req, resp):
         print(req.start.x)
@@ -134,7 +135,7 @@ class KpController(Node):
                 break
 
     def create_costmap(self, msg: OccupancyGrid):
-        if (not self.maze):
+        if (not self.created_map):
             # Save data from costmap topic
             width = msg.info.width
             height = msg.info.height
@@ -153,12 +154,13 @@ class KpController(Node):
             # Rescale and flip the data
             rescaled_data = cv2.resize(reshaped_data, (new_width, new_height))
             flipped_data = cv2.flip(rescaled_data, 0)
-            
+
+            cv2.imwrite("ScaledMap.png", flipped_data)
+
             self.maze = flipped_data
-
-            cv2.imwrite("testimg.png", flipped_data)        
-
-
+            self.created_map = True
+        
+        
 def main():
     rclpy.init()
 
