@@ -1,11 +1,15 @@
+from .a_star_skeleton1 import astar
 from interfaces.srv import StartAndEnd
 from geometry_msgs.msg import Twist
 from tf2_msgs.msg import TFMessage
+from nav_msgs.msg import OccupancyGrid
 import rclpy
 import numpy as np
 
 from rclpy.node import Node
 import math
+import numpy as np
+import cv2
 
 
 
@@ -27,6 +31,8 @@ class KpController(Node):
         self.subscriber = self.create_subscription(TFMessage, '/tf', self.update_pose, 10)
         self.timer = self.create_timer(0.05, self.kp_controller)
         self.srv = self.create_service(StartAndEnd, 'start_and_end', self.start_controller)
+        self.map_subscriber = self.create_subscription(OccupancyGrid, '/global_costmap/costmap', self.create_costmap, 10)
+        self.created_map = False
         self.tf_to_odom_x = None
         self.tf_to_odom_y = None
         self.curr_pose = Pose()
@@ -51,11 +57,25 @@ class KpController(Node):
 
         # Kp controller constant
         self.kp = 3
+        self.maze = None
+        self.created_map = False
 
     def start_controller(self, req, resp):
         print(req.start.x)
         print(req.end.x)
+        
+        start_x_px, start_y_px = self.cartesian_to_pixel(req.start.x, req.start.y)
+        end_x_px, end_y_px = self.cartesian_to_pixel(req.end.x, req.end.y)
+
+        start_point = (start_x_px, start_y_px)
+        end_point = (end_x_px, end_y_px)
+
+        path = np.asarray(astar(self.maze, start_point, end_point), dtype=np.float)
+
+        print(path)
+
         resp.status = True
+
         return resp
 
     def kp_controller(self):
@@ -127,7 +147,43 @@ class KpController(Node):
                 self.get_logger().info("Current Position: " + str(self.curr_pose))
                 break
 
+    def cartesian_to_pixel(self, odom_x, odom_y):
+        px_x = (odom_x - self.origin_x) / self.resolution
+        px_y = (odom_y - (self.map_height * self.resolution - self.origin_y)) / -self.resolution
+        return px_x, px_y
 
+    def create_costmap(self, msg: OccupancyGrid):
+        if (not self.created_map):
+            # Save data from costmap topic
+            width = msg.info.width
+            height = msg.info.height
+            resolution = msg.info.resolution
+            origin = msg.info.origin
+            data = np.array(msg.data)
+
+            # Reshape array according to width and height
+            reshaped_data = np.reshape(data, (height, width)).astype('float32')
+
+            # Determine new image dimentions for downscaling
+            resize_factor = 0.2 / resolution
+            new_width = int(width / resize_factor)
+            new_height = int(height / resize_factor)
+
+            # Rescale and flip the data
+            rescaled_data = cv2.resize(reshaped_data, (new_width, new_height))
+            flipped_data = cv2.flip(rescaled_data, 0)
+
+            cv2.imwrite("ScaledMap.png", flipped_data)
+
+            self.map_width = new_width
+            self.map_height = new_height
+            self.resolution = 0.2
+            self.origin_x = origin.position.x
+            self.origin_y = origin.position.y
+            self.maze = flipped_data
+            self.created_map = True
+        
+        
 def main():
     rclpy.init()
 
