@@ -1,3 +1,4 @@
+from .a_star_skeleton1 import astar
 from interfaces.srv import StartAndEnd
 from geometry_msgs.msg import Twist
 from tf2_msgs.msg import TFMessage
@@ -62,7 +63,19 @@ class KpController(Node):
     def start_controller(self, req, resp):
         print(req.start.x)
         print(req.end.x)
+        
+        start_x_px, start_y_px = self.cartesian_to_pixel(req.start.x, req.start.y)
+        end_x_px, end_y_px = self.cartesian_to_pixel(req.end.x, req.end.y)
+
+        start_point = (start_x_px, start_y_px)
+        end_point = (end_x_px, end_y_px)
+
+        path = np.asarray(astar(self.maze, start_point, end_point), dtype=np.float)
+
+        print(path)
+
         resp.status = True
+
         return resp
 
     def kp_controller(self):
@@ -134,6 +147,11 @@ class KpController(Node):
                 self.get_logger().info("Current Position: " + str(self.curr_pose))
                 break
 
+    def cartesian_to_pixel(self, odom_x, odom_y):
+        px_x = (odom_x - self.origin_x) / self.resolution
+        px_y = (odom_y - (self.map_height * self.resolution - self.origin_y)) / -self.resolution
+        return px_x, px_y
+
     def create_costmap(self, msg: OccupancyGrid):
         if (not self.created_map):
             # Save data from costmap topic
@@ -157,6 +175,11 @@ class KpController(Node):
 
             cv2.imwrite("ScaledMap.png", flipped_data)
 
+            self.map_width = new_width
+            self.map_height = new_height
+            self.resolution = 0.2
+            self.origin_x = origin.position.x
+            self.origin_y = origin.position.y
             self.maze = flipped_data
             self.created_map = True
         
